@@ -3,133 +3,196 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Minecraft AFK Bot Dashboard</title>
+  <title>Minecraft Multi-Bot Dashboard</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>MC AFK Bot Control Center</h1>
-      <div id="status-badge" class="badge offline">OFFLINE</div>
-    </header>
+  <div class="app-container">
+    <!-- Sol Panel: Bot Ekleme Formu -->
+    <aside class="sidebar">
+      <h2>Bot Hesabı Ekle</h2>
+      <form id="add-bot-form">
+        <div class="form-group">
+          <label>Sunucu IP / Host</label>
+          <input type="text" id="host" placeholder="play.sunucu.com" required>
+        </div>
 
-    <div class="main-grid">
-      <!-- Sunucu Bilgileri ve Form -->
-      <div class="card config-card">
-        <h2>Sunucu & Bot Ayarları</h2>
-        <form id="bot-form">
+        <div class="form-row">
           <div class="form-group">
-            <label>Sunucu IP / Host</label>
-            <input type="text" id="host" placeholder="Örn: play.sunucu.com" required>
+            <label>Port</label>
+            <input type="number" id="port" value="25565" required>
           </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Port</label>
-              <input type="number" id="port" value="25565" required>
-            </div>
-            <div class="form-group">
-              <label>Sürüm (İsteğe Bağlı)</label>
-              <input type="text" id="version" placeholder="1.20.6">
-            </div>
-          </div>
-
           <div class="form-group">
-            <label>Bot Kullanıcı Adı</label>
-            <input type="text" id="username" placeholder="Bot_Ismi" required>
+            <label>Sürüm</label>
+            <input type="text" id="version" placeholder="1.20.6">
           </div>
+        </div>
 
-          <div class="form-group">
-            <label>Giriş / Login Komutu</label>
-            <input type="text" id="authCmd" placeholder="Örn: /login sifre123">
-          </div>
+        <div class="form-group">
+          <label>Bot Kullanıcı Adı</label>
+          <input type="text" id="username" placeholder="AFK_Bot_1" required>
+        </div>
 
-          <div class="form-group">
-            <label>Proxy / Yönlendirme Komutu</label>
-            <input type="text" id="redirectCmd" placeholder="Örn: /gir boxpvp">
-          </div>
+        <div class="form-group">
+          <label>Giriş / Login Komutu</label>
+          <input type="text" id="authCmd" placeholder="/login sifre123">
+        </div>
 
-          <div class="form-group checkbox-group">
-            <input type="checkbox" id="autoReconnect" checked>
-            <label for="autoReconnect">Düşünce Otomatik Tekrar Bağlan</label>
-          </div>
+        <div class="form-group">
+          <label>Proxy / Yönlendirme (/gir)</label>
+          <input type="text" id="redirectCmd" placeholder="/gir boxpvp">
+        </div>
 
-          <div class="button-group">
-            <button type="submit" id="btn-start" class="btn btn-primary">Bota Bağlan</button>
-            <button type="button" id="btn-stop" class="btn btn-danger">Bağlantıyı Kes</button>
-          </div>
-        </form>
+        <div class="checkbox-group">
+          <input type="checkbox" id="autoReconnect" checked>
+          <label for="autoReconnect">Otomatik Tekrar Bağlan</label>
+        </div>
+
+        <button type="submit" class="btn btn-add">🚀 Botu Sunucuya Bağla</button>
+      </form>
+    </aside>
+
+    <!-- Sağ Panel: Bot Sekmeleri & Özel Terminaller -->
+    <main class="main-content">
+      <!-- Bot Sekmeleri Header -->
+      <div class="tabs-header" id="tabs-header">
+        <div class="no-tab-msg" id="no-tab-msg">Henüz eklenmiş bir bot yok. Sol panelden yeni bir bot başlatın.</div>
       </div>
 
-      <!-- Live Terminal Console -->
-      <div class="card terminal-card">
-        <div class="terminal-header">
-          <span>Live Console Terminal</span>
-          <button onclick="clearTerminal()" class="btn-clear">Temizle</button>
+      <!-- Terminal Bölümü -->
+      <div class="terminal-container">
+        <div class="terminal-bar">
+          <span id="active-bot-title">Aktif Bot: Yok</span>
+          <div class="terminal-actions">
+            <button class="btn btn-danger-sm" id="btn-stop-current">Bağlantıyı Kes</button>
+            <button class="btn btn-clear" onclick="clearActiveTerminal()">Temizle</button>
+          </div>
         </div>
-        <div id="terminal" class="terminal-body"></div>
-        <div class="terminal-input-area">
+
+        <!-- Terminaller Buraya Dinamik Eklenir -->
+        <div class="terminals-wrapper" id="terminals-wrapper"></div>
+
+        <!-- Terminal Input -->
+        <div class="terminal-input-bar">
           <span class="prompt">&gt;</span>
-          <input type="text" id="cmdInput" placeholder="Komut veya mesaj gönder (Örn: /ping)..." onkeydown="handleKey(event)">
-          <button onclick="sendCommand()" class="btn-send">Gönder</button>
+          <input type="text" id="cmdInput" placeholder="Seçili bota komut veya chat mesajı gönder..." onkeydown="handleKey(event)">
+          <button onclick="sendCommand()" class="btn btn-send">Gönder</button>
         </div>
       </div>
-    </div>
+    </main>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
+    let activeBotId = null;
+    const bots = {};
 
-    // DOM Elements
-    const form = document.getElementById('bot-form');
-    const statusBadge = document.getElementById('status-badge');
-    const terminal = document.getElementById('terminal');
+    const tabsHeader = document.getElementById('tabs-header');
+    const noTabMsg = document.getElementById('no-tab-msg');
+    const terminalsWrapper = document.getElementById('terminals-wrapper');
+    const activeBotTitle = document.getElementById('active-bot-title');
     const cmdInput = document.getElementById('cmdInput');
 
-    // Bot Status Update
-    socket.on('bot-status', (status) => {
-      statusBadge.innerText = status;
-      statusBadge.className = 'badge ' + status.toLowerCase();
+    socket.on('init-bots', (serverBots) => {
+      Object.keys(serverBots).forEach(id => {
+        addBotUI(id, serverBots[id].username, serverBots[id].status);
+      });
     });
 
-    // Handle Form Submit
-    form.addEventListener('submit', (e) => {
+    document.getElementById('add-bot-form').addEventListener('submit', (e) => {
       e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const botId = 'bot_' + username.toLowerCase().replace(/[^a-z0-9]/g, '');
+
       const config = {
-        host: document.getElementById('host').value,
-        port: document.getElementById('port').value,
-        version: document.getElementById('version').value,
-        username: document.getElementById('username').value,
-        authCmd: document.getElementById('authCmd').value,
-        redirectCmd: document.getElementById('redirectCmd').value,
+        id: botId,
+        host: document.getElementById('host').value.trim(),
+        port: document.getElementById('port').value.trim(),
+        version: document.getElementById('version').value.trim(),
+        username: username,
+        authCmd: document.getElementById('authCmd').value.trim(),
+        redirectCmd: document.getElementById('redirectCmd').value.trim(),
         autoReconnect: document.getElementById('autoReconnect').checked
       };
 
-      socket.emit('start-bot', config);
+      if (!bots[botId]) {
+        addBotUI(botId, username, 'CONNECTING');
+      }
+
+      socket.emit('start-bot-instance', config);
     });
 
-    // Stop Bot
-    document.getElementById('btn-stop').addEventListener('click', () => {
-      socket.emit('stop-bot');
+    function addBotUI(botId, username, status) {
+      if (noTabMsg) noTabMsg.style.display = 'none';
+
+      bots[botId] = { username, status };
+
+      const tab = document.createElement('div');
+      tab.className = 'tab-item';
+      tab.id = `tab-${botId}`;
+      tab.onclick = () => switchTab(botId);
+      tab.innerHTML = `
+        <span class="status-dot ${status.toLowerCase()}" id="dot-${botId}"></span>
+        <span class="tab-name">${username}</span>
+      `;
+      tabsHeader.appendChild(tab);
+
+      const term = document.createElement('div');
+      term.className = 'terminal-screen';
+      term.id = `term-${botId}`;
+      terminalsWrapper.appendChild(term);
+
+      if (!activeBotId) {
+        switchTab(botId);
+      }
+    }
+
+    function switchTab(botId) {
+      activeBotId = botId;
+
+      document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+      const activeTab = document.getElementById(`tab-${botId}`);
+      if (activeTab) activeTab.classList.add('active');
+
+      document.querySelectorAll('.terminal-screen').forEach(el => el.classList.remove('active'));
+      const activeTerm = document.getElementById(`term-${botId}`);
+      if (activeTerm) activeTerm.classList.add('active');
+
+      if (bots[botId]) {
+        activeBotTitle.innerText = `Aktif Bot: ${bots[botId].username}`;
+      }
+    }
+
+    socket.on('bot-status-change', ({ botId, status }) => {
+      if (bots[botId]) bots[botId].status = status;
+      const dot = document.getElementById(`dot-${botId}`);
+      if (dot) dot.className = `status-dot ${status.toLowerCase()}`;
     });
 
-    // Terminal Log Event
-    socket.on('terminal-log', (data) => {
-      const line = document.createElement('div');
-      line.className = `log-line log-${data.type}`;
-      line.innerHTML = `<span class="time">[${data.time}]</span> <span class="msg"></span>`;
-      line.querySelector('.msg').textContent = data.message;
-      
-      terminal.appendChild(line);
-      terminal.scrollTop = terminal.scrollHeight;
+    socket.on('bot-log', ({ botId, time, message, type }) => {
+      let term = document.getElementById(`term-${botId}`);
+      if (!term && bots[botId]) {
+        addBotUI(botId, bots[botId].username, 'OFFLINE');
+        term = document.getElementById(`term-${botId}`);
+      }
+
+      if (term) {
+        const line = document.createElement('div');
+        line.className = `log-line log-${type}`;
+        line.innerHTML = `<span class="time">[${time}]</span> <span class="msg"></span>`;
+        line.querySelector('.msg').textContent = message;
+
+        term.appendChild(line);
+        term.scrollTop = term.scrollHeight;
+      }
     });
 
-    // Send Terminal Command
     function sendCommand() {
-      const val = cmdInput.value.trim();
-      if (val) {
-        socket.emit('send-command', val);
+      if (!activeBotId) return;
+      const cmd = cmdInput.value.trim();
+      if (cmd) {
+        socket.emit('send-bot-command', { id: activeBotId, cmd });
         cmdInput.value = '';
       }
     }
@@ -138,8 +201,17 @@
       if (e.key === 'Enter') sendCommand();
     }
 
-    function clearTerminal() {
-      terminal.innerHTML = '';
+    document.getElementById('btn-stop-current').addEventListener('click', () => {
+      if (activeBotId) {
+        socket.emit('stop-bot-instance', activeBotId);
+      }
+    });
+
+    function clearActiveTerminal() {
+      if (activeBotId) {
+        const term = document.getElementById(`term-${activeBotId}`);
+        if (term) term.innerHTML = '';
+      }
     }
   </script>
 </body>
