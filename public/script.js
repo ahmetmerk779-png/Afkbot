@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Socket.io Bağlantısı
+  const socket = io();
+
   const botForm = document.getElementById('bot-form');
   const tabsHeader = document.getElementById('tabs-header');
   const noTabMsg = document.getElementById('no-tab-msg');
@@ -12,7 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeBotId = null;
   const bots = {};
 
-  // BOT OLUŞTURMA
+  // CANLI LOG VE SOHBET MESAJI ALINDIĞINDA
+  socket.on('bot_log', (data) => {
+    appendLog(data.id, data.text, data.type);
+  });
+
+  // BOT OLUŞTURMA VE BAĞLAMA
   botForm.addEventListener('submit', (e) => {
     e.preventDefault();
 
@@ -26,30 +34,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!username || !host) return;
 
     const botId = 'bot_' + Date.now();
-    bots[botId] = {
-      id: botId,
-      username,
-      host,
-      port,
-      version,
-      asmpCmd,
-      offline,
-      status: 'online'
-    };
+    const botData = { botId, username, host, port, version, asmpCmd, offline };
+
+    bots[botId] = botData;
 
     createBotTab(botId, username);
     createBotTerminal(botId);
     selectBotTab(botId);
 
-    // ASMP veya Login komutu tanımlandıysa konsola bilgi bas
-    if (asmpCmd) {
-      appendLog(botId, `[Sistem] Giriş/ASMP komutu hazırlandı: ${asmpCmd}`, 'log-system');
-    }
-
-    botForm.reset();
+    // Backend'e bot başlatma isteği gönder
+    socket.emit('start_bot', botData);
   });
 
-  // SEKME OLUŞTURMA
+  // TAB OLUŞTURMA
   function createBotTab(id, name) {
     if (noTabMsg) noTabMsg.style.display = 'none';
 
@@ -62,16 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
     tabsHeader.appendChild(tab);
   }
 
-  // TERMINAL EKRANI OLUŞTURMA
+  // TERMINAL PENCERESİ OLUŞTURMA
   function createBotTerminal(id) {
     const screen = document.createElement('div');
     screen.className = 'terminal-screen';
     screen.id = `term-${id}`;
-    screen.innerHTML = `<div class="log-line log-system">[Sistem] ${bots[id].username} sunucuya (${bots[id].host}:${bots[id].port}) bağlanıyor...</div>`;
     terminalsWrapper.appendChild(screen);
   }
 
-  // BOT SEKMESİ SEÇME
+  // TAB SEÇME
   function selectBotTab(id) {
     activeBotId = id;
 
@@ -88,8 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // LOG EKLEME
-  function appendLog(id, text, styleClass = 'log-line') {
+  // EKRANA LOG YAZMA
+  function appendLog(id, text, styleClass = 'log-chat') {
     const term = document.getElementById(`term-${id}`);
     if (!term) return;
 
@@ -97,6 +93,8 @@ document.addEventListener('DOMContentLoaded', () => {
     line.className = `log-line ${styleClass}`;
     line.innerText = text;
     term.appendChild(line);
+
+    // Otomatik en aşağı kaydır
     term.scrollTop = term.scrollHeight;
   }
 
@@ -105,7 +103,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const cmd = terminalInput.value.trim();
     if (!cmd || !activeBotId) return;
 
-    appendLog(activeBotId, `> ${cmd}`, 'log-user-input');
+    // Backend'e komut gönder
+    socket.emit('send_command', { botId: activeBotId, command: cmd });
+
     terminalInput.value = '';
   }
 
@@ -124,6 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // BOTU KAPAT
   btnDisconnectBot.addEventListener('click', () => {
     if (!activeBotId) return;
+
+    socket.emit('stop_bot', activeBotId);
 
     const tab = document.querySelector(`.tab-item[data-id="${activeBotId}"]`);
     const term = document.getElementById(`term-${activeBotId}`);
