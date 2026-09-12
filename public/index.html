@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft AFK Bot Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>MC AFK Bot Control Center</h1>
+      <div id="status-badge" class="badge offline">OFFLINE</div>
+    </header>
+
+    <div class="main-grid">
+      <!-- Sunucu Bilgileri ve Form -->
+      <div class="card config-card">
+        <h2>Sunucu & Bot Ayarları</h2>
+        <form id="bot-form">
+          <div class="form-group">
+            <label>Sunucu IP / Host</label>
+            <input type="text" id="host" placeholder="Örn: play.sunucu.com" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Port</label>
+              <input type="number" id="port" value="25565" required>
+            </div>
+            <div class="form-group">
+              <label>Sürüm (İsteğe Bağlı)</label>
+              <input type="text" id="version" placeholder="1.20.6">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Bot Kullanıcı Adı</label>
+            <input type="text" id="username" placeholder="Bot_Ismi" required>
+          </div>
+
+          <div class="form-group">
+            <label>Giriş / Login Komutu</label>
+            <input type="text" id="authCmd" placeholder="Örn: /login sifre123">
+          </div>
+
+          <div class="form-group">
+            <label>Proxy / Yönlendirme Komutu</label>
+            <input type="text" id="redirectCmd" placeholder="Örn: /gir boxpvp">
+          </div>
+
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="autoReconnect" checked>
+            <label for="autoReconnect">Düşünce Otomatik Tekrar Bağlan</label>
+          </div>
+
+          <div class="button-group">
+            <button type="submit" id="btn-start" class="btn btn-primary">Bota Bağlan</button>
+            <button type="button" id="btn-stop" class="btn btn-danger">Bağlantıyı Kes</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Live Terminal Console -->
+      <div class="card terminal-card">
+        <div class="terminal-header">
+          <span>Live Console Terminal</span>
+          <button onclick="clearTerminal()" class="btn-clear">Temizle</button>
+        </div>
+        <div id="terminal" class="terminal-body"></div>
+        <div class="terminal-input-area">
+          <span class="prompt">&gt;</span>
+          <input type="text" id="cmdInput" placeholder="Komut veya mesaj gönder (Örn: /ping)..." onkeydown="handleKey(event)">
+          <button onclick="sendCommand()" class="btn-send">Gönder</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // DOM Elements
+    const form = document.getElementById('bot-form');
+    const statusBadge = document.getElementById('status-badge');
+    const terminal = document.getElementById('terminal');
+    const cmdInput = document.getElementById('cmdInput');
+
+    // Bot Status Update
+    socket.on('bot-status', (status) => {
+      statusBadge.innerText = status;
+      statusBadge.className = 'badge ' + status.toLowerCase();
+    });
+
+    // Handle Form Submit
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const config = {
+        host: document.getElementById('host').value,
+        port: document.getElementById('port').value,
+        version: document.getElementById('version').value,
+        username: document.getElementById('username').value,
+        authCmd: document.getElementById('authCmd').value,
+        redirectCmd: document.getElementById('redirectCmd').value,
+        autoReconnect: document.getElementById('autoReconnect').checked
+      };
+
+      socket.emit('start-bot', config);
+    });
+
+    // Stop Bot
+    document.getElementById('btn-stop').addEventListener('click', () => {
+      socket.emit('stop-bot');
+    });
+
+    // Terminal Log Event
+    socket.on('terminal-log', (data) => {
+      const line = document.createElement('div');
+      line.className = `log-line log-${data.type}`;
+      line.innerHTML = `<span class="time">[${data.time}]</span> <span class="msg"></span>`;
+      line.querySelector('.msg').textContent = data.message;
+      
+      terminal.appendChild(line);
+      terminal.scrollTop = terminal.scrollHeight;
+    });
+
+    // Send Terminal Command
+    function sendCommand() {
+      const val = cmdInput.value.trim();
+      if (val) {
+        socket.emit('send-command', val);
+        cmdInput.value = '';
+      }
+    }
+
+    function handleKey(e) {
+      if (e.key === 'Enter') sendCommand();
+    }
+
+    function clearTerminal() {
+      terminal.innerHTML = '';
+    }
+  </script>
+</body>
+</html>
